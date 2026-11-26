@@ -1,0 +1,97 @@
+name: Scheduled YouTube Video Upload
+
+on:
+  schedule:
+    # Täglich um 16:25 UTC (ca. 17:25 MEZ / 18:25 MESZ, vermeidet volle Stunden wegen Cron-Jitter)
+    - cron: "25 16 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Optionales Profil (leer = alle aktiven Profile)"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Nur simulieren ohne YouTube-Upload und Drive-Papierkorb"
+        required: false
+        default: "false"
+        type: string
+      privacy:
+        description: "Optionale Sichtbarkeit (public, unlisted, private)"
+        required: false
+        default: ""
+        type: string
+      max_uploads:
+        description: "Maximale Uploads pro Profil (0 = Profil-Standard)"
+        required: false
+        default: "0"
+        type: string
+      video_id:
+        description: "Optionale Queue-Video-ID für Einzelupload"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  upload-videos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v4
+
+      - name: FFmpeg für exakte Video-Analyse installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Python 3.12 einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "requirements-worker.txt"
+
+      - name: Worker-Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-worker.txt
+
+      - name: Geplanten Video-Upload ausführen
+        env:
+          PYTHONUNBUFFERED: "1"
+          INPUT_PROFILE: ${{ inputs.profile }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_PRIVACY: ${{ inputs.privacy }}
+          INPUT_MAX_UPLOADS: ${{ inputs.max_uploads }}
+          INPUT_VIDEO_ID: ${{ inputs.video_id }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_STAGING_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_STAGING_FOLDER_ID }}
+          GOOGLE_DRIVE_STAGING_FOLDER_NAME: ${{ secrets.GOOGLE_DRIVE_STAGING_FOLDER_NAME || 'youtube-upload-bot-staging' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          TURSO_URL: ${{ secrets.TURSO_URL }}
+          TURSO_KEY: ${{ secrets.TURSO_KEY }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          EMAIL_PROVIDER: ${{ secrets.EMAIL_PROVIDER || 'resend' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM || 'YouTube Upload Bot <onboarding@resend.dev>' }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          STREAMLIT_APP_URL: ${{ secrets.STREAMLIT_APP_URL }}
+        run: |
+          ARGS="--trigger-source github_actions"
+          if [ -n "$INPUT_PROFILE" ]; then ARGS="$ARGS --profile $INPUT_PROFILE"; fi
+          if [ "$INPUT_DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ -n "$INPUT_PRIVACY" ]; then ARGS="$ARGS --privacy $INPUT_PRIVACY"; fi
+          if [ -n "$INPUT_MAX_UPLOADS" ] && [ "$INPUT_MAX_UPLOADS" != "0" ]; then ARGS="$ARGS --max-uploads $INPUT_MAX_UPLOADS"; fi
+          if [ -n "$INPUT_VIDEO_ID" ]; then ARGS="$ARGS --video-id $INPUT_VIDEO_ID"; fi
+          python -m src.worker.cli_worker $ARGS

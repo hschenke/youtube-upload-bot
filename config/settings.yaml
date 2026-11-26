@@ -1,0 +1,75 @@
+# Deklarative Standardkonfiguration für youtube-upload-bot
+default_language: "en"
+staging_folder_name: "youtube-upload-bot-staging"
+
+allowed_models:
+  - "gemini-3.8-flash"
+  - "gemini-3.5-flash-lite"
+  - "gemini-4-argon"
+
+notifications:
+  notify_on_upload: true
+  notify_on_error: true
+  notify_on_empty_queue: true
+
+profiles:
+  shorts:
+    display_name: "YouTube Shorts (Portrait)"
+    enabled: true
+    orientation: "portrait"
+    min_aspect_ratio: 0.45
+    max_aspect_ratio: 0.85
+    min_duration_seconds: 3.0
+    max_duration_seconds: 180.0
+    min_width: 360
+    min_height: 640
+    date_from: null
+    date_to: null
+    include_filename_patterns: []
+    exclude_filename_patterns: []
+    selection_order: "oldest_first"
+    max_uploads_per_run: 1
+    privacy_status: "public"
+    category_id: "22"
+    made_for_kids: false
+    language: "en"
+    required_hashtags:
+      - "#Shorts"
+    default_tags:
+      - "shorts"
+      - "shortvideo"
+    description_footer: ""
+    ai_prompt: >-
+      Analyze the uploaded vertical video (audio and visuals) and create an engaging,
+      concise YouTube Shorts title, a natural short description, and 4 to 6 relevant
+      discoverable hashtags in English. Capture the core action, mood, or location
+      without clickbait or false claims.
+
+  landscape:
+    display_name: "Standard Videos (Landscape)"
+    enabled: false
+    orientation: "landscape"
+    min_aspect_ratio: 1.2
+    max_aspect_ratio: 2.5
+    min_duration_seconds: 10.0
+    max_duration_seconds: 3600.0
+    min_width: 1280
+    min_height: 720
+    date_from: null
+    date_to: null
+    include_filename_patterns: []
+    exclude_filename_patterns: []
+    selection_order: "oldest_first"
+    max_uploads_per_run: 1
+    privacy_status: "public"
+    category_id: "22"
+    made_for_kids: false
+    language: "en"
+    required_hashtags: []
+    default_tags:
+      - "video"
+    description_footer: ""
+    ai_prompt: >-
+      Analyze the uploaded landscape video (audio and visuals) and write a clear,
+      descriptive YouTube title, an informative 2-3 sentence description, and 4 to 8
+      relevant hashtags in English.
