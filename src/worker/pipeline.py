@@ -88,7 +88,7 @@ class UploadPipelineService:
     ) -> None:
         self._settings = settings
         self._repo = repository
-        creds = GoogleOAuthCredentialProvider(settings)
+        creds = GoogleOAuthCredentialProvider(settings, repository=repository)
         self._picker = picker_client or GooglePhotosPickerClient(creds)
         self._drive = drive_client or GoogleDriveStagingClient(
             creds,

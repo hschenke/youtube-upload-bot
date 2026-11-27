@@ -182,3 +182,32 @@ class UploadRunRecord:
     failed_count: int = 0
     uploaded_video_ids: tuple[str, ...] = field(default_factory=tuple)
     summary_message: str = ""
+
+
+@dataclass(frozen=True)
+class GoogleAccountRecord:
+    """Verbundenes Google-Konto inkl. verschlüsseltem Refresh Token."""
+
+    account_id: str
+    email: str
+    display_name: str = ""
+    youtube_channel_id: str | None = None
+    youtube_channel_title: str | None = None
+    encrypted_refresh_token: str = ""
+    scopes: tuple[str, ...] = ()
+    is_active: bool = False
+    connected_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass(frozen=True)
+class OAuthStateRecord:
+    """Kurzlebiger PKCE- & CSRF-State für den Web-OAuth-Callback."""
+
+    state: str
+    code_verifier: str
+    redirect_uri: str
+    initiated_by_admin: bool = True
+    created_at: str = ""
+    expires_at: str = ""
+

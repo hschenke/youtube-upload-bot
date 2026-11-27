@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "youtube-upload-bot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Autonomer YouTube-Upload-Bot mit Google Photos Picker Ingest, Google Drive Staging, Gemini Video-Analyse, Streamlit-Dashboard, Turso-Persistenz und GitHub Actions."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,6 +13,7 @@ dependencies = [
     "google-api-python-client>=2.160.0",
     "google-auth>=2.38.0",
     "google-auth-oauthlib>=1.2.1",
+    "cryptography>=43.0.0",
     "pydantic>=2.9.0",
     "requests>=2.32.3",
     "pyyaml>=6.0.2",

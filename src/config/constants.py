@@ -8,7 +8,11 @@ DEFAULT_SETTINGS_YAML_PATH = "config/settings.yaml"
 DEFAULT_STAGING_FOLDER_NAME = "youtube-upload-bot-staging"
 
 # --- Google API Endpunkte & Scopes ---
+GOOGLE_OAUTH_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_OAUTH_TOKEN_URI = "https://oauth2.googleapis.com/token"  # noqa: S105
+GOOGLE_OAUTH_USERINFO_URI = "https://www.googleapis.com/oauth2/v2/userinfo"
+GOOGLE_OAUTH_REVOKE_URI = "https://oauth2.googleapis.com/revoke"
+YOUTUBE_CHANNELS_API_URI = "https://www.googleapis.com/youtube/v3/channels"
 PHOTOS_PICKER_API_BASE = "https://photospicker.googleapis.com/v1"
 YOUTUBE_WATCH_URL_TEMPLATE = "https://www.youtube.com/watch?v={video_id}"
 YOUTUBE_SHORTS_URL_TEMPLATE = "https://youtube.com/shorts/{video_id}"
@@ -22,6 +26,15 @@ GOOGLE_REQUIRED_SCOPES: tuple[str, ...] = (
 GOOGLE_LEAST_PRIVILEGE_SCOPES: tuple[str, ...] = (
     "https://www.googleapis.com/auth/photospicker.mediaitems.readonly",
     "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+)
+GOOGLE_WEB_OAUTH_SCOPES: tuple[str, ...] = (
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/photospicker.mediaitems.readonly",
+    "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
 )
@@ -84,3 +97,4 @@ ADMIN_TOKEN_MAX_AGE_SECONDS = 86400
 CLOCK_SKEW_TOLERANCE_SECONDS = 60
 MAX_FAILED_LOGIN_ATTEMPTS = 5
 LOGIN_LOCKOUT_SECONDS = 300
+OAUTH_STATE_TTL_SECONDS = 600

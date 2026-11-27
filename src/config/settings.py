@@ -24,13 +24,21 @@ from src.domain.models import UploadProfile
 
 
 def _read_streamlit_secrets() -> dict[str, Any]:
-    """Liest optional `st.secrets`, ohne im reinen CLI-Worker Streamlit vorauszusetzen."""
+    """Liest optional `st.secrets` ohne Seiteneffekte auf `os.environ`."""
+    prev_env = dict(os.environ)
     try:
         import streamlit as st
 
-        return dict(st.secrets)
+        secrets_data = dict(st.secrets)
     except Exception:
         return {}
+    finally:
+        # Streamlit kann leere Strings aus secrets.toml in os.environ injizieren;
+        # vorherige Umgebungswerte dürfen dadurch nicht überschrieben werden.
+        for key, val in prev_env.items():
+            if val:
+                os.environ[key] = val
+    return secrets_data
 
 
 def _get_config_value(
@@ -130,6 +138,7 @@ class AppSettings:
     google_client_id: str = ""
     google_client_secret: str = ""
     google_refresh_token: str = ""
+    oauth_encryption_key: str = ""
     drive_staging_folder_id: str = ""
     drive_staging_folder_name: str = DEFAULT_STAGING_FOLDER_NAME
     gemini_api_key: str = ""
@@ -158,8 +167,16 @@ class AppSettings:
     default_profiles: tuple[UploadProfile, ...] = field(default_factory=tuple)
 
     @property
+    def has_google_client_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def has_oauth_encryption_configured(self) -> bool:
+        return bool(self.oauth_encryption_key)
+
+    @property
     def has_google_oauth_configured(self) -> bool:
-        return bool(self.google_client_id and self.google_client_secret and self.google_refresh_token)
+        return bool(self.has_google_client_configured and self.google_refresh_token)
 
     @property
     def has_gemini_configured(self) -> bool:
@@ -215,6 +232,7 @@ def load_app_settings(
         google_client_id=_get_config_value("GOOGLE_CLIENT_ID", secrets_map),
         google_client_secret=_get_config_value("GOOGLE_CLIENT_SECRET", secrets_map),
         google_refresh_token=_get_config_value("GOOGLE_REFRESH_TOKEN", secrets_map),
+        oauth_encryption_key=_get_config_value("OAUTH_ENCRYPTION_KEY", secrets_map),
         drive_staging_folder_id=_get_config_value("GOOGLE_DRIVE_STAGING_FOLDER_ID", secrets_map),
         drive_staging_folder_name=folder_name,
         gemini_api_key=_get_config_value("GEMINI_API_KEY", secrets_map),

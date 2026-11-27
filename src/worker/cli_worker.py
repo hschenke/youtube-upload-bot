@@ -68,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     repository = create_repository(settings)
 
     try:
+        settings = repository.load_runtime_settings(settings)
         pipeline = UploadPipelineService(settings, repository)
         if args.sync_only:
             scanned, missing = pipeline.sync_drive_queue()

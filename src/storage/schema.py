@@ -1,4 +1,4 @@
-"""Idempotentes Datenbankschema für Profile, Video-Queue, Upload-Läufe und Settings."""
+"""Idempotentes Datenbankschema für Profile, Video-Queue, Läufe, Konten und Settings."""
 
 from __future__ import annotations
 
@@ -89,8 +89,33 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS google_accounts (
+        account_id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        display_name TEXT NOT NULL DEFAULT '',
+        youtube_channel_id TEXT,
+        youtube_channel_title TEXT,
+        encrypted_refresh_token TEXT NOT NULL,
+        scopes_json TEXT NOT NULL DEFAULT '[]',
+        is_active INTEGER NOT NULL DEFAULT 0,
+        connected_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS oauth_states (
+        state TEXT PRIMARY KEY,
+        code_verifier TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        initiated_by_admin INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_video_queue_status ON video_queue(status)",
     "CREATE INDEX IF NOT EXISTS idx_video_queue_photos_id ON video_queue(photos_media_id)",
     "CREATE INDEX IF NOT EXISTS idx_video_queue_sha256 ON video_queue(content_sha256)",
     "CREATE INDEX IF NOT EXISTS idx_upload_runs_started ON upload_runs(started_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_google_accounts_active ON google_accounts(is_active)",
 )

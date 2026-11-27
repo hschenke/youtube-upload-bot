@@ -1,11 +1,11 @@
-"""View 2: Video-Queue, Filter-Treffer, manuelle Overrides & Sofort-Run."""
+"""View 2: Video-Queue, Filter-Treffer, manuelle Overrides & direkte Web-App-Ausführung."""
 
 from __future__ import annotations
 
 import streamlit as st
 
 from src.config.settings import AppSettings
-from src.domain.enums import TriggerSource, VideoQueueStatus
+from src.domain.enums import RunStatus, TriggerSource, VideoQueueStatus
 from src.domain.exceptions import BotError
 from src.domain.models import UploadProfile, VideoQueueItem
 from src.domain.schemas import normalize_hashtag
@@ -26,7 +26,8 @@ def _render_top_actions(
     repository: SqlBotRepository,
     profiles: list[UploadProfile],
 ) -> None:
-    col1, col2, col3, col4 = st.columns([1.2, 1.2, 1.2, 1.4])
+    profile_names = [p.name for p in profiles]
+    col1, col2, col3 = st.columns([1.1, 1.4, 1.5])
     with col1:
         if st.button("🔄 Drive-Ordner syncen", use_container_width=True):
             try:
@@ -36,8 +37,6 @@ def _render_top_actions(
                 st.rerun()
             except BotError as exc:
                 st.error(f"Sync fehlgeschlagen: {exc}")
-
-    profile_names = [p.name for p in profiles]
     with col2:
         chosen_profile = st.selectbox(
             "Profil für Lauf",
@@ -45,9 +44,26 @@ def _render_top_actions(
             format_func=lambda x: "Alle aktiven Profile" if x == "" else x,
         )
     with col3:
-        dry_run = st.checkbox("Dry-Run (nur Simulation)", value=True)
-    with col4:
-        if st.button("🚀 GitHub-Worker jetzt starten", type="primary", use_container_width=True):
+        dry_run = st.checkbox("Dry-Run (nur Simulation ohne YouTube-Upload)", value=True)
+
+    btn_dry, btn_live, btn_gh = st.columns([1.3, 1.3, 1.4])
+    with btn_dry:
+        if st.button("🧪 Testlauf (Dry-Run) direkt hier starten", type="primary", use_container_width=True):
+            _run_in_webapp(settings, repository, chosen_profile, dry_run=True)
+    with btn_live:
+        if st.button("🚀 Upload jetzt direkt in der Web-App starten", use_container_width=True):
+            _run_in_webapp(settings, repository, chosen_profile, dry_run=dry_run)
+    with btn_gh:
+        if st.button(
+            "☁️ GitHub-Worker anstoßen",
+            disabled=not settings.has_github_worker_configured,
+            help=(
+                "Optionaler Remote-Start auf GitHub Actions (benötigt GITHUB_TOKEN)."
+                if not settings.has_github_worker_configured
+                else "Startet den GitHub Actions Workflow asynchron."
+            ),
+            use_container_width=True,
+        ):
             try:
                 GitHubActionsDispatcher(settings).trigger_upload_run(
                     profile=chosen_profile,
@@ -57,15 +73,30 @@ def _render_top_actions(
             except BotError as exc:
                 st.error(f"Workflow-Start fehlgeschlagen: {exc}")
 
-    if st.button("▶️ Lokal im Dashboard ausführen", use_container_width=False):
-        with st.spinner("Pipeline läuft..."):
-            pipeline = UploadPipelineService(settings, repository)
-            run = pipeline.run_scheduled_upload(
-                profile_name=chosen_profile,
-                dry_run=dry_run,
-                trigger_source=TriggerSource.STREAMLIT,
-            )
-        st.info(f"Run `{run.run_id}` ({run.status.value}): {run.summary_message}")
+
+def _run_in_webapp(
+    settings: AppSettings,
+    repository: SqlBotRepository,
+    chosen_profile: str,
+    *,
+    dry_run: bool,
+) -> None:
+    with st.spinner("Pipeline läuft direkt in der Web-App..."):
+        pipeline = UploadPipelineService(settings, repository)
+        run = pipeline.run_scheduled_upload(
+            profile_name=chosen_profile,
+            dry_run=dry_run,
+            trigger_source=TriggerSource.STREAMLIT,
+        )
+    msg = f"Run `{run.run_id}` ({run.status.value}): {run.summary_message}"
+    if run.status == RunStatus.FAILED:
+        st.error(msg)
+    elif run.status == RunStatus.EMPTY:
+        st.warning(msg)
+    else:
+        st.success(msg)
+        if run.uploaded_video_ids:
+            st.caption(f"Verarbeitete IDs: {', '.join(run.uploaded_video_ids)}")
 
 
 def _render_video_card(

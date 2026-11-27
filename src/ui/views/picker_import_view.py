@@ -24,17 +24,17 @@ def _render_picker_section(settings: AppSettings, repository: SqlBotRepository) 
     st.subheader("1. Aus Google Fotos auswählen (Picker API)")
     st.write(
         "Starte eine sichere Google-Photos-Auswahl. Ausgewählte Videos werden sofort in deinen "
-        "Google Drive Staging-Ordner übertragen, damit der GitHub-Actions-Bot sie automatisch nach Zeitplan hochladen kann."
+        "Google Drive Staging-Ordner übertragen, damit sie automatisch nach Zeitplan hochgeladen werden können."
     )
 
-    if not settings.has_google_oauth_configured:
+    creds = GoogleOAuthCredentialProvider(settings, repository=repository)
+    if not creds.has_connected_account():
         st.warning(
-            "Google OAuth ist noch nicht konfiguriert. Bitte zuerst unter **⚙️ System & Setup** "
-            "oder in `.env` / Secrets hinterlegen."
+            "Es ist noch kein Google-Konto verbunden. Bitte unter **⚙️ System & Setup** "
+            "über den Google-Login anmelden."
         )
         return
 
-    creds = GoogleOAuthCredentialProvider(settings)
     picker = GooglePhotosPickerClient(creds)
 
     col_a, col_b = st.columns([1, 2])
@@ -92,8 +92,9 @@ def _run_picker_import(
 
 def _render_direct_upload_section(settings: AppSettings, repository: SqlBotRepository) -> None:
     st.subheader("2. Alternativ: Direktes Video in Drive-Staging hochladen")
-    if not settings.has_google_oauth_configured:
-        st.caption("Google OAuth erforderlich.")
+    creds = GoogleOAuthCredentialProvider(settings, repository=repository)
+    if not creds.has_connected_account():
+        st.caption("Verbundenes Google-Konto erforderlich.")
         return
 
     uploaded_files = st.file_uploader(
@@ -105,7 +106,6 @@ def _render_direct_upload_section(settings: AppSettings, repository: SqlBotRepos
         return
 
     if st.button("☁️ In Drive Staging-Ordner hochladen"):
-        creds = GoogleOAuthCredentialProvider(settings)
         drive = GoogleDriveStagingClient(
             creds,
             folder_id=settings.drive_staging_folder_id,

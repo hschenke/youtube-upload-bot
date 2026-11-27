@@ -14,7 +14,13 @@ from src.domain.enums import (
     VideoOrientation,
     VideoQueueStatus,
 )
-from src.domain.models import UploadProfile, UploadRunRecord, VideoQueueItem
+from src.domain.models import (
+    GoogleAccountRecord,
+    OAuthStateRecord,
+    UploadProfile,
+    UploadRunRecord,
+    VideoQueueItem,
+)
 
 
 def _parse_json_tuple(raw: Any) -> tuple[str, ...]:
@@ -126,3 +132,36 @@ def row_to_upload_run(row: Mapping[str, Any]) -> UploadRunRecord:
         uploaded_video_ids=_parse_json_tuple(row.get("uploaded_video_ids_json")),
         summary_message=str(row.get("summary_message") or ""),
     )
+
+
+def row_to_google_account(row: Mapping[str, Any]) -> GoogleAccountRecord:
+    """Konvertiert eine Zeile aus `google_accounts` in `GoogleAccountRecord`."""
+    return GoogleAccountRecord(
+        account_id=str(row["account_id"]),
+        email=str(row["email"]),
+        display_name=str(row.get("display_name") or ""),
+        youtube_channel_id=(
+            str(row["youtube_channel_id"]) if row.get("youtube_channel_id") else None
+        ),
+        youtube_channel_title=(
+            str(row["youtube_channel_title"]) if row.get("youtube_channel_title") else None
+        ),
+        encrypted_refresh_token=str(row["encrypted_refresh_token"]),
+        scopes=_parse_json_tuple(row.get("scopes_json")),
+        is_active=bool(int(row.get("is_active", 0))),
+        connected_at=str(row.get("connected_at") or ""),
+        updated_at=str(row.get("updated_at") or ""),
+    )
+
+
+def row_to_oauth_state(row: Mapping[str, Any]) -> OAuthStateRecord:
+    """Konvertiert eine Zeile aus `oauth_states` in `OAuthStateRecord`."""
+    return OAuthStateRecord(
+        state=str(row["state"]),
+        code_verifier=str(row["code_verifier"]),
+        redirect_uri=str(row["redirect_uri"]),
+        initiated_by_admin=bool(int(row.get("initiated_by_admin", 1))),
+        created_at=str(row.get("created_at") or ""),
+        expires_at=str(row.get("expires_at") or ""),
+    )
+

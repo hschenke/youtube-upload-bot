@@ -4,15 +4,25 @@ from __future__ import annotations
 
 import json
 import secrets
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 
-from src.config.constants import DEFAULT_QUERY_LIMIT
+from src.config.constants import DEFAULT_QUERY_LIMIT, OAUTH_STATE_TTL_SECONDS
 from src.config.settings import AppSettings
 from src.domain.enums import VideoQueueStatus
-from src.domain.models import DriveVideoFile, UploadProfile, UploadRunRecord, VideoQueueItem
+from src.domain.models import (
+    DriveVideoFile,
+    GoogleAccountRecord,
+    OAuthStateRecord,
+    UploadProfile,
+    UploadRunRecord,
+    VideoQueueItem,
+)
 from src.storage.executor import SqlExecutor
 from src.storage.row_mappers import (
+    row_to_google_account,
+    row_to_oauth_state,
     row_to_upload_profile,
     row_to_upload_run,
     row_to_video_queue_item,
@@ -527,6 +537,239 @@ class SqlBotRepository:
             """,
             (key, value, utc_now_iso()),
         )
+
+    def load_runtime_settings(self, base: AppSettings) -> AppSettings:
+        """Lädt nicht-geheime Laufzeiteinstellungen aus `app_settings` über `base`."""
+        res = self._executor.execute("SELECT key, value FROM app_settings")
+        if not res.rows:
+            return base
+
+        stored = {str(r["key"]): str(r["value"]) for r in res.rows}
+
+        def _pick_str(key: str, fallback: str) -> str:
+            return stored[key].strip() if key in stored else fallback
+
+        def _pick_bool(key: str, fallback: bool) -> bool:
+            if key not in stored:
+                return fallback
+            raw = stored[key].strip().lower()
+            if raw in {"1", "true", "yes", "on"}:
+                return True
+            if raw in {"0", "false", "no", "off"}:
+                return False
+            return fallback
+
+        def _pick_int(key: str, fallback: int) -> int:
+            if key not in stored:
+                return fallback
+            try:
+                return int(stored[key].strip())
+            except ValueError:
+                return fallback
+
+        model = _pick_str("gemini_model", base.gemini_model)
+        if base.allowed_models and model not in base.allowed_models:
+            model = base.gemini_model
+
+        provider = _pick_str("email_provider", base.email_provider).lower()
+        if provider not in {"resend", "smtp"}:
+            provider = base.email_provider
+
+        return replace(
+            base,
+            gemini_model=model,
+            drive_staging_folder_name=_pick_str(
+                "drive_staging_folder_name", base.drive_staging_folder_name
+            )
+            or base.drive_staging_folder_name,
+            drive_staging_folder_id=_pick_str(
+                "drive_staging_folder_id", base.drive_staging_folder_id
+            ),
+            email_provider=provider,
+            email_to=_pick_str("email_to", base.email_to),
+            email_from=_pick_str("email_from", base.email_from) or base.email_from,
+            smtp_host=_pick_str("smtp_host", base.smtp_host),
+            smtp_port=_pick_int("smtp_port", base.smtp_port),
+            smtp_user=_pick_str("smtp_user", base.smtp_user),
+            notify_on_upload=_pick_bool("notify_on_upload", base.notify_on_upload),
+            notify_on_error=_pick_bool("notify_on_error", base.notify_on_error),
+            notify_on_empty_queue=_pick_bool("notify_on_empty_queue", base.notify_on_empty_queue),
+            streamlit_app_url=_pick_str("streamlit_app_url", base.streamlit_app_url),
+            github_repo=_pick_str("github_repo", base.github_repo),
+            github_branch=_pick_str("github_branch", base.github_branch) or base.github_branch,
+            github_workflow_file=_pick_str("github_workflow_file", base.github_workflow_file)
+            or base.github_workflow_file,
+        )
+
+    def save_runtime_settings(self, updates: Mapping[str, str]) -> None:
+        """Speichert nicht-geheime Laufzeiteinstellungen gebündelt in `app_settings`."""
+        if not updates:
+            return
+        now = utc_now_iso()
+        statements = [
+            (
+                """
+                INSERT INTO app_settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                """,
+                (str(key), str(value), now),
+            )
+            for key, value in updates.items()
+        ]
+        self._executor.execute_batch(statements)
+
+    # --- Google OAuth Konten & PKCE-States ---
+
+    def create_oauth_state(
+        self,
+        *,
+        state: str,
+        code_verifier: str,
+        redirect_uri: str,
+        ttl_seconds: int = OAUTH_STATE_TTL_SECONDS,
+        initiated_by_admin: bool = True,
+    ) -> None:
+        now_dt = datetime.now(UTC).replace(microsecond=0)
+        expires_dt = now_dt + timedelta(seconds=max(60, int(ttl_seconds)))
+        now_iso = now_dt.isoformat()
+        self._executor.execute_batch(
+            [
+                ("DELETE FROM oauth_states WHERE expires_at <= ?", (now_iso,)),
+                (
+                    """
+                    INSERT INTO oauth_states (
+                        state, code_verifier, redirect_uri, initiated_by_admin, created_at, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        state,
+                        code_verifier,
+                        redirect_uri,
+                        1 if initiated_by_admin else 0,
+                        now_iso,
+                        expires_dt.isoformat(),
+                    ),
+                ),
+            ]
+        )
+
+    def consume_oauth_state(self, state: str) -> OAuthStateRecord | None:
+        """Liest und löscht einen OAuth-State atomar (Einmal-Verwendung gegen Replay)."""
+        clean_state = state.strip()
+        if not clean_state:
+            return None
+        res = self._executor.execute(
+            "SELECT * FROM oauth_states WHERE state = ? LIMIT 1",
+            (clean_state,),
+        )
+        if not res.rows:
+            return None
+        record = row_to_oauth_state(res.rows[0])
+        del_res = self._executor.execute(
+            "DELETE FROM oauth_states WHERE state = ?",
+            (clean_state,),
+        )
+        if del_res.affected_rows != 1:
+            return None
+        if record.expires_at <= utc_now_iso():
+            return None
+        return record
+
+    def upsert_google_account(
+        self,
+        account: GoogleAccountRecord,
+        *,
+        set_active: bool = True,
+    ) -> None:
+        now = utc_now_iso()
+        statements: list[tuple[str, Sequence[object]]] = []
+        if set_active:
+            statements.append(("UPDATE google_accounts SET is_active = 0 WHERE is_active = 1", ()))
+        statements.append(
+            (
+                """
+                INSERT INTO google_accounts (
+                    account_id, email, display_name, youtube_channel_id,
+                    youtube_channel_title, encrypted_refresh_token, scopes_json,
+                    is_active, connected_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(account_id) DO UPDATE SET
+                    email = excluded.email,
+                    display_name = excluded.display_name,
+                    youtube_channel_id = excluded.youtube_channel_id,
+                    youtube_channel_title = excluded.youtube_channel_title,
+                    encrypted_refresh_token = excluded.encrypted_refresh_token,
+                    scopes_json = excluded.scopes_json,
+                    is_active = excluded.is_active,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    account.account_id,
+                    account.email,
+                    account.display_name,
+                    account.youtube_channel_id,
+                    account.youtube_channel_title,
+                    account.encrypted_refresh_token,
+                    json.dumps(list(account.scopes)),
+                    1 if (set_active or account.is_active) else 0,
+                    account.connected_at or now,
+                    now,
+                ),
+            )
+        )
+        self._executor.execute_batch(statements)
+
+    def list_google_accounts(self) -> list[GoogleAccountRecord]:
+        res = self._executor.execute(
+            "SELECT * FROM google_accounts ORDER BY is_active DESC, updated_at DESC"
+        )
+        return [row_to_google_account(row) for row in res.rows]
+
+    def get_active_google_account(self) -> GoogleAccountRecord | None:
+        res = self._executor.execute(
+            "SELECT * FROM google_accounts WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1"
+        )
+        if res.rows:
+            return row_to_google_account(res.rows[0])
+        fallback = self._executor.execute(
+            "SELECT * FROM google_accounts ORDER BY updated_at DESC LIMIT 1"
+        )
+        return row_to_google_account(fallback.rows[0]) if fallback.rows else None
+
+    def get_google_account(self, account_id: str) -> GoogleAccountRecord | None:
+        res = self._executor.execute(
+            "SELECT * FROM google_accounts WHERE account_id = ? LIMIT 1",
+            (account_id.strip(),),
+        )
+        return row_to_google_account(res.rows[0]) if res.rows else None
+
+    def set_active_google_account(self, account_id: str) -> bool:
+        target = self.get_google_account(account_id)
+        if target is None:
+            return False
+        now = utc_now_iso()
+        self._executor.execute_batch(
+            [
+                ("UPDATE google_accounts SET is_active = 0 WHERE is_active = 1", ()),
+                (
+                    "UPDATE google_accounts SET is_active = 1, updated_at = ? WHERE account_id = ?",
+                    (now, target.account_id),
+                ),
+            ]
+        )
+        return True
+
+    def delete_google_account(self, account_id: str) -> None:
+        clean_id = account_id.strip()
+        if not clean_id:
+            return
+        self._executor.execute("DELETE FROM google_accounts WHERE account_id = ?", (clean_id,))
+        if self.get_active_google_account() is None:
+            return
+        remaining = self.list_google_accounts()
+        if remaining and not any(acc.is_active for acc in remaining):
+            self.set_active_google_account(remaining[0].account_id)
 
 
 def create_repository(settings: AppSettings) -> SqlBotRepository:

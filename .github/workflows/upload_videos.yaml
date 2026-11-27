@@ -68,25 +68,16 @@ jobs:
           INPUT_PRIVACY: ${{ inputs.privacy }}
           INPUT_MAX_UPLOADS: ${{ inputs.max_uploads }}
           INPUT_VIDEO_ID: ${{ inputs.video_id }}
+          # Ausschließlich echte Secrets (Non-Secrets wie GEMINI_MODEL, EMAIL_TO, Ordnername kommen aus der Datenbank)
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-          GOOGLE_DRIVE_STAGING_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_STAGING_FOLDER_ID }}
-          GOOGLE_DRIVE_STAGING_FOLDER_NAME: ${{ secrets.GOOGLE_DRIVE_STAGING_FOLDER_NAME || 'youtube-upload-bot-staging' }}
+          OAUTH_ENCRYPTION_KEY: ${{ secrets.OAUTH_ENCRYPTION_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.8-flash' }}
           TURSO_URL: ${{ secrets.TURSO_URL }}
           TURSO_KEY: ${{ secrets.TURSO_KEY }}
-          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
-          EMAIL_PROVIDER: ${{ secrets.EMAIL_PROVIDER || 'resend' }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM || 'YouTube Upload Bot <onboarding@resend.dev>' }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          STREAMLIT_APP_URL: ${{ secrets.STREAMLIT_APP_URL }}
         run: |
           ARGS="--trigger-source github_actions"
           if [ -n "$INPUT_PROFILE" ]; then ARGS="$ARGS --profile $INPUT_PROFILE"; fi
